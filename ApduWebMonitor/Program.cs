@@ -1,5 +1,7 @@
-using MudBlazor.Services;
 using ApduWebMonitor.Components;
+using ApduWebMonitor.External;
+using ApduWebMonitor.Services;
+using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +11,10 @@ builder.Services.AddMudServices();
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddHostedService<EtwDataLoader>();
+builder.Services.AddSingleton<ApduStore>();
+builder.Services.AddSingleton<UsbReader>();
 
 var app = builder.Build();
 
@@ -29,4 +35,4 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+await app.RunAsync();
