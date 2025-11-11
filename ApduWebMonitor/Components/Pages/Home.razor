@@ -1,59 +1,122 @@
-﻿@page "/"
+@page "/"
+@using ApduWebMonitor.External
+@using ApduWebMonitor.Services
+@using PCSC.Iso7816
+@rendermode InteractiveServer
+@inject ApduStore Store
+@inject IJSRuntime JS
+@inject UsbReader Reader
+@implements IDisposable
 
-<PageTitle>Home</PageTitle>
+<PageTitle>APDU Monitor</PageTitle>
 
-<MudText Typo="Typo.h3" GutterBottom="true">Hello, world!</MudText>
-<MudText Class="mb-8">Welcome to your new app, powered by MudBlazor and the .NET 9 Template!</MudText>
+<MudContainer MaxWidth="MaxWidth.False" Class="mt-3">
 
-<MudAlert Severity="Severity.Normal" ContentAlignment="HorizontalAlignment.Start">
-    You can find documentation and examples on our website here:
-    <MudLink Href="https://mudblazor.com" Target="_blank" Typo="Typo.body2" Color="Color.Primary">
-        <b>www.mudblazor.com</b>
-    </MudLink>
-</MudAlert>
+    <!-- Toolbar at top -->
+    <MudPaper Elevation="1" Class="mb-2">
+        <MudToolBar>
+            <MudText>Total: @messages.Count</MudText>
+            <MudSpacer />
+            <MudToggleGroup T="bool" @bind-Value="isReadable" Outlined="true" Delimiters="true" Size="Size.Small" Style="width: 20rem">
+                <MudToggleItem Value="false">HEX</MudToggleItem>
+                <MudToggleItem Value="true">UTF-8</MudToggleItem>
+            </MudToggleGroup>
+            <MudSpacer />
+            <MudButton OnClick="Clear"
+                       StartIcon="@Icons.Material.Outlined.Delete"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary">Clear</MudButton>
+            <MudButton OnClick="Reconnect"
+                       StartIcon="@Icons.Material.Outlined.Recycling"
+                       Variant="Variant.Filled"
+                       Color="Color.Error">Reconnect</MudButton>
+        </MudToolBar>
+    </MudPaper>
 
-<br />
-<MudText Typo="Typo.h5" GutterBottom="true">Interactivity in this Template</MudText>
-<br />
-<MudText Typo="Typo.body2">
-    When you opt for the "Global" Interactivity Location, <br />
-    the render modes are defined in App.razor and consequently apply to all child components.<br />
-    In this case, providers are globally set in the MainLayout.<br />
-    <br />
-    On the other hand, if you choose the "Per page/component" Interactivity Location,<br />
-    it is necessary to include the <br />
-    <br />
-    &lt;MudPopoverProvider /&gt; <br />
-    &lt;MudDialogProvider /&gt; <br />
-    &lt;MudSnackbarProvider /&gt; <br />
-    <br />
-    components on every interactive page.<br />
-    <br />
-    If a render mode is not specified for a page, it defaults to Server-Side Rendering (SSR),<br />
-    similar to this page. While MudBlazor allows pages to be rendered in SSR,<br />
-    please note that interactive features, such as buttons and dropdown menus, will not be functional.
-</MudText>
+    <!-- Table with alternating colors -->
+    <MudPaper Elevation="1" Class="mb-2">
+        <MudDataGrid T="Apdu" Items="@messages" Height="calc(100vh - 180px)"
+                     Dense="true"
+                     Hover="true"
+                     Striped="true"
+                     Bordered="true"
+                     FixedHeader="true">
+            <Columns>
+                <PropertyColumn Property="@(x => isReadable ? x.ToReadable() : x.ToHex())" Title="Data" CellStyle="white-space:nowrap" />
+                <TemplateColumn StickyRight="true" HeaderStyle="width:3rem;" CellStyle="width:3rem;">
+                    <HeaderTemplate>
+                        <MudIconButton OnClick="CopyRows" Variant="Variant.Filled" Icon="@Icons.Material.Outlined.CopyAll" Size="@Size.Small" />
+                    </HeaderTemplate>
+                    <CellTemplate>
+                        <MudIconButton OnClick="@(() => CopyRow(context.Item))" Icon="@Icons.Material.Outlined.ContentCopy" Size="@Size.Small" />
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    </MudPaper>
 
-<br />
-<MudText Typo="Typo.h5" GutterBottom="true">What's New in Blazor with the Release of .NET 9</MudText>
-<br />
+</MudContainer>
 
-<MudText Typo="Typo.h6" GutterBottom="true">Prerendering</MudText>
-<MudText Typo="Typo.body2" GutterBottom="true">
-    If you're exploring the features of .NET 9 Blazor,<br /> you might be pleasantly surprised to learn that each page is prerendered on the server,<br /> regardless of the selected render mode.<br /><br />
-    This means that you'll need to inject all necessary services on the server,<br /> even when opting for the wasm (WebAssembly) render mode.<br /><br />
-    This prerendering functionality is crucial to ensuring that WebAssembly mode feels fast and responsive,<br /> especially when it comes to initial page load times.<br /><br />
-    For more information on how to detect prerendering and leverage the RenderContext, you can refer to the following link:
-    <MudLink Href="https://github.com/dotnet/aspnetcore/issues/51468#issuecomment-1783568121" Target="_blank" Typo="Typo.body2" Color="Color.Primary">
-        More details
-    </MudLink>
-</MudText>
+@code {
+    private readonly List<Apdu> messages = new();
 
-<br />
-<MudText Typo="Typo.h6" GutterBottom="true">InteractiveAuto</MudText>
-<MudText Typo="Typo.body2">
-    A discussion on how to achieve this can be found here:
-    <MudLink Href="https://github.com/dotnet/aspnetcore/issues/51468#issue-1950424116" Target="_blank" Typo="Typo.body2" Color="Color.Primary">
-        More details
-    </MudLink>
-</MudText>
+    private bool _isReadable;
+    private bool isReadable
+    {
+        get => _isReadable;
+        set
+        {
+            _isReadable = value;
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        messages.AddRange(Store.GetMessages());
+
+        Store.MessageAdded += OnAppended;
+        Store.Cleared += OnCleared;
+    }
+
+    private void OnAppended(Apdu item)
+    {
+        messages.Add(item);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCleared()
+    {
+        messages.Clear();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Clear()
+    {
+        Store.Clear();
+    }
+
+    private Task Reconnect()
+    {
+        return Reader.RestartSmartCardReaders();
+    }
+
+    private async Task CopyRow(Apdu? apdu)
+    {
+        if (apdu is null)
+            return;
+        await JS.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, apdu.ToHex());
+    }
+
+    private async Task CopyRows()
+    {
+        var data = string.Join(Environment.NewLine, messages.Select(x => x.ToHex()));
+        await JS.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
+    }
+
+    public void Dispose()
+    {
+        Store.MessageAdded -= OnAppended;
+        Store.Cleared -= OnCleared;
+    }
+}

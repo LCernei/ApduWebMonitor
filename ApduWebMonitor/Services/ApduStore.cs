@@ -44,6 +44,7 @@ public class ApduStore(ILogger<ApduStore> logger)
     public void Reset()
     {
         nextIsCommand = true;
+        Clear();
     }
 
     public void Clear()
