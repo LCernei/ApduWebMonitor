@@ -24,11 +24,11 @@ public class UsbReader(ILogger<UsbReader> logger)
         }
 
         await process.WaitForExitAsync();
-        string output = await process.StandardOutput.ReadToEndAsync();
-        string error = await process.StandardError.ReadToEndAsync();
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
 
         logger.LogInformation("PnPUtil: {Message}", output);
         if (!string.IsNullOrWhiteSpace(error))
-            logger.LogError("Error: {Error}", error);
+            logger.LogError("PnPUtil: {Error}", error);
     }
 }

@@ -7,7 +7,6 @@
 @inject ApduStore Store
 @inject IJSRuntime JsRuntime
 @inject UsbReader Reader
-@implements IDisposable
 
 <PageTitle>APDU Monitor</PageTitle>
 
@@ -30,10 +29,12 @@
         <MudSpacer />
         <MudButton OnClick="@Store.Clear"
                    StartIcon="@Icons.Material.Outlined.Delete"
-                   Color="Color.Primary">Clear</MudButton>
+                   Color="Color.Primary">Clear
+        </MudButton>
         <MudButton OnClick="@Reader.RestartSmartCardReaders"
                    StartIcon="@Icons.Material.Outlined.Refresh"
-                   Color="Color.Error">Reconnect</MudButton>
+                   Color="Color.Error">Reconnect
+        </MudButton>
     </ToolBarContent>
 
     <Columns>
@@ -43,20 +44,22 @@
                 <MudIcon Icon="@GetStatusIcon(context.Item)" Color="@GetStatusColor(context.Item)" Size="Size.Small" />
             </CellTemplate>
         </TemplateColumn>
-        <PropertyColumn Property="@(x => IsReadable ? x.ToReadable() : x.ToHex())" Title="Data" Sortable="false" CellStyle="white-space: nowrap;" />
+        <PropertyColumn Property="@(x => IsReadable ? x.ToReadable() : x.ToHex())" Title="Data" Sortable="false"
+                        CellStyle="white-space: nowrap;" />
         <TemplateColumn StickyRight="true" HeaderStyle="width:1%;" CellStyle="width:1%;">
             <HeaderTemplate>
                 <MudIconButton OnClick="@CopyRows" Icon="@Icons.Material.Outlined.CopyAll" Size="Size.Small" />
             </HeaderTemplate>
             <CellTemplate>
-                <MudIconButton OnClick="@(() => CopyRow(context.Item))" Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small" />
+                <MudIconButton OnClick="@(() => CopyRow(context.Item))" Icon="@Icons.Material.Outlined.ContentCopy"
+                               Size="Size.Small" />
             </CellTemplate>
         </TemplateColumn>
     </Columns>
 </MudDataGrid>
 
 @code {
-    private ObservableCollection<Apdu> messages = [];
+    private ReadOnlyObservableCollection<Apdu> messages = new([]);
 
     private bool IsReadable
     {
@@ -70,32 +73,24 @@
 
     protected override void OnInitialized()
     {
-        messages = new ObservableCollection<Apdu>(Store.GetMessages());
-
-        Store.MessageAdded += OnAppended;
-        Store.Cleared += OnCleared;
-    }
-
-    private void OnAppended(Apdu item)
-    {
-        messages.Add(item);
-    }
-
-    private void OnCleared()
-    {
-        messages.Clear();
+        messages = Store.GetObservable();
     }
 
     private async Task CopyRow(Apdu? apdu)
     {
         if (apdu is null)
             return;
-        await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, apdu.ToHex());
+
+        var data = IsReadable ? apdu.ToReadable() : apdu.ToHex();
+        await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
     }
 
     private async Task CopyRows()
     {
-        var data = string.Join(Environment.NewLine, messages.Select(x => x.ToHex()));
+        var data = string.Join(
+            Environment.NewLine,
+            messages.Select(x => IsReadable ? x.ToReadable() : x.ToHex()));
+
         await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
     }
 
@@ -122,11 +117,5 @@
         if (i % 4 < 2)
             return "background: rgba(0,0,0,0.3);";
         return string.Empty;
-    }
-
-    public void Dispose()
-    {
-        Store.MessageAdded -= OnAppended;
-        Store.Cleared -= OnCleared;
     }
 }

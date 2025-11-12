@@ -9,4 +9,6 @@ public static class Constants
             public const string WriteText = "navigator.clipboard.writeText";
         }
     }
+
+    public const string EtwSessionNameField = "ETWSessionName";
 }

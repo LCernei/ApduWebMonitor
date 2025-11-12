@@ -5,11 +5,13 @@ namespace ApduWebMonitor.External;
 
 public class EtwDataLoader(
     ApduStore store,
+    IConfiguration configuration,
     ILogger<EtwDataLoader> logger) : BackgroundService
 {
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var source = new ETWTraceEventSource("APDUTraceLive", TraceEventSourceType.Session);
+        var sessionName = configuration.GetValue<string>(Constants.EtwSessionNameField);
+        var source = new ETWTraceEventSource(sessionName, TraceEventSourceType.Session);
         source.AllEvents += HandleEvent;
 
         stoppingToken.Register(() =>
@@ -56,13 +58,13 @@ public class EtwDataLoader(
         var data = string.Join("", evnt.EventData().SkipLast(1).Select(x => (char)x));
         var splitData = data.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (splitData.Length != 2 || splitData[0] != "APDU")
+        if (splitData is not ["APDU", _])
         {
             logger.LogInformation("{Data} is not an APDU", data);
             return;
         }
 
-        if (splitData[1] == "80 14 05 00 00") // weird APDU - no response
+        if (splitData[1] == "80 14 05 00 00") // weird APDU command - no response
             return;
 
         if (splitData[1] == "Reset")

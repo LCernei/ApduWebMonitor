@@ -1,18 +1,15 @@
+using System.Collections.ObjectModel;
 using PCSC.Iso7816;
 
 namespace ApduWebMonitor.Services;
 
 public class ApduStore(ILogger<ApduStore> logger)
 {
-    private bool nextIsCommand = true;
+    private readonly ObservableCollection<Apdu> messages = [];
     private IsoCase lastIsoCase;
+    private bool nextIsCommand = true;
 
-    private readonly List<Apdu> messages = [];
-
-    public Action<Apdu>? MessageAdded { get; set; }
-    public Action? Cleared { get; set; }
-
-    public IReadOnlyList<Apdu> GetMessages() => messages.AsReadOnly();
+    public ReadOnlyObservableCollection<Apdu> GetObservable() => new(messages);
 
     public void AddMessage(byte[] apduBytes)
     {
@@ -32,12 +29,10 @@ public class ApduStore(ILogger<ApduStore> logger)
             }
 
             messages.Add(apdu);
-            MessageAdded?.Invoke(apdu);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "ERROR");
-            return;
         }
     }
 
@@ -50,6 +45,5 @@ public class ApduStore(ILogger<ApduStore> logger)
     public void Clear()
     {
         messages.Clear();
-        Cleared?.Invoke();
     }
 }

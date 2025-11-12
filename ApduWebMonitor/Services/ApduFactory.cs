@@ -3,7 +3,7 @@ using PCSC.Iso7816;
 
 namespace ApduWebMonitor.Services;
 
-public class ApduFactory
+public static class ApduFactory
 {
     public static CommandApdu CommandFrom(params byte[] apdu)
     {
@@ -43,22 +43,21 @@ public class ApduFactory
                 // Case 3s
                 return CreateCase3sCommand(apdu, data);
             }
-            else if (rest.Length == 1)
+
+            if (rest.Length == 1)
             {
                 // Case 4s: trailing single-byte Le
                 return CreateCase4sCommand(apdu, data, rest[0]);
             }
-            else
-            {
-                throw new FormatException("Invalid short APDU: bytes remain after Data that don't match a 1-byte Le.");
-            }
+
+            throw new FormatException("Invalid short APDU: bytes remain after Data that don't match a 1-byte Le.");
         }
         else
         {
             var after00 = span[1..];
             if (after00.Length == 0)
             {
-                // Case 2s: apduended in 00 Le
+                // Case 2s: apdu Le == 0x00
                 return CreateCase2sCommand(apdu, 0);
             }
 
@@ -96,15 +95,14 @@ public class ApduFactory
                 // Case 3e
                 return CreateCase3eCommand(apdu, data);
             }
-            else if (rest.Length == 2)
+
+            if (rest.Length == 2)
             {
                 // Case 4e: trailing two-byte Le
                 return CreateCase4eCommand(apdu, data, rest);
             }
-            else
-            {
-                throw new FormatException("Invalid extended APDU: bytes remain after Data that don't match a 2-byte Le.");
-            }
+
+            throw new FormatException("Invalid extended APDU: bytes remain after Data that don't match a 2-byte Le.");
         }
     }
 
@@ -183,5 +181,6 @@ public class ApduFactory
         throw new ArgumentException($"Length {bytes.Length} size not supported");
     }
 
-    public static ResponseApdu ResponseFrom(IsoCase isoCase, params byte[] apdu) => new(apdu, isoCase, SCardProtocol.T1);
+    public static ResponseApdu ResponseFrom(IsoCase isoCase, params byte[] apdu)
+        => new(apdu, isoCase, SCardProtocol.T1);
 }
