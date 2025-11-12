@@ -2,78 +2,75 @@
 @using ApduWebMonitor.External
 @using ApduWebMonitor.Services
 @using PCSC.Iso7816
+@using System.Collections.ObjectModel
 @rendermode InteractiveServer
 @inject ApduStore Store
-@inject IJSRuntime JS
+@inject IJSRuntime JsRuntime
 @inject UsbReader Reader
 @implements IDisposable
 
 <PageTitle>APDU Monitor</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.False" Class="mt-3">
+<MudDataGrid T="Apdu" Items="@messages"
+             Height="75vh"
+             Dense="true"
+             Hover="true"
+             Striped="false"
+             Bordered="true"
+             FixedHeader="true"
+             MultiSelection="true"
+             RowStyleFunc="GetRowStyle">
+    <ToolBarContent>
+        <MudText>Total: @messages.Count</MudText>
+        <MudSpacer />
+        <MudToggleGroup T="bool" @bind-Value="IsReadable" Delimiters="true">
+            <MudToggleItem Value="false">HEX</MudToggleItem>
+            <MudToggleItem Value="true">UTF-8</MudToggleItem>
+        </MudToggleGroup>
+        <MudSpacer />
+        <MudButton OnClick="@Store.Clear"
+                   StartIcon="@Icons.Material.Outlined.Delete"
+                   Color="Color.Primary">Clear</MudButton>
+        <MudButton OnClick="@Reader.RestartSmartCardReaders"
+                   StartIcon="@Icons.Material.Outlined.Refresh"
+                   Color="Color.Error">Reconnect</MudButton>
+    </ToolBarContent>
 
-    <!-- Toolbar at top -->
-    <MudPaper Elevation="1" Class="mb-2">
-        <MudToolBar>
-            <MudText>Total: @messages.Count</MudText>
-            <MudSpacer />
-            <MudToggleGroup T="bool" @bind-Value="isReadable" Outlined="true" Delimiters="true" Size="Size.Small" Style="width: 20rem">
-                <MudToggleItem Value="false">HEX</MudToggleItem>
-                <MudToggleItem Value="true">UTF-8</MudToggleItem>
-            </MudToggleGroup>
-            <MudSpacer />
-            <MudButton OnClick="Clear"
-                       StartIcon="@Icons.Material.Outlined.Delete"
-                       Variant="Variant.Filled"
-                       Color="Color.Primary">Clear</MudButton>
-            <MudButton OnClick="Reconnect"
-                       StartIcon="@Icons.Material.Outlined.Recycling"
-                       Variant="Variant.Filled"
-                       Color="Color.Error">Reconnect</MudButton>
-        </MudToolBar>
-    </MudPaper>
-
-    <!-- Table with alternating colors -->
-    <MudPaper Elevation="1" Class="mb-2">
-        <MudDataGrid T="Apdu" Items="@messages" Height="calc(100vh - 180px)"
-                     Dense="true"
-                     Hover="true"
-                     Striped="true"
-                     Bordered="true"
-                     FixedHeader="true">
-            <Columns>
-                <PropertyColumn Property="@(x => isReadable ? x.ToReadable() : x.ToHex())" Title="Data" CellStyle="white-space:nowrap" />
-                <TemplateColumn StickyRight="true" HeaderStyle="width:3rem;" CellStyle="width:3rem;">
-                    <HeaderTemplate>
-                        <MudIconButton OnClick="CopyRows" Variant="Variant.Filled" Icon="@Icons.Material.Outlined.CopyAll" Size="@Size.Small" />
-                    </HeaderTemplate>
-                    <CellTemplate>
-                        <MudIconButton OnClick="@(() => CopyRow(context.Item))" Icon="@Icons.Material.Outlined.ContentCopy" Size="@Size.Small" />
-                    </CellTemplate>
-                </TemplateColumn>
-            </Columns>
-        </MudDataGrid>
-    </MudPaper>
-
-</MudContainer>
+    <Columns>
+        @* <SelectColumn T="Apdu" Size="Size.Small" /> *@
+        <TemplateColumn CellStyle="width:1%;">
+            <CellTemplate>
+                <MudIcon Icon="@GetStatusIcon(context.Item)" Color="@GetStatusColor(context.Item)" Size="Size.Small" />
+            </CellTemplate>
+        </TemplateColumn>
+        <PropertyColumn Property="@(x => IsReadable ? x.ToReadable() : x.ToHex())" Title="Data" Sortable="false" CellStyle="white-space: nowrap;" />
+        <TemplateColumn StickyRight="true" HeaderStyle="width:1%;" CellStyle="width:1%;">
+            <HeaderTemplate>
+                <MudIconButton OnClick="@CopyRows" Icon="@Icons.Material.Outlined.CopyAll" Size="Size.Small" />
+            </HeaderTemplate>
+            <CellTemplate>
+                <MudIconButton OnClick="@(() => CopyRow(context.Item))" Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small" />
+            </CellTemplate>
+        </TemplateColumn>
+    </Columns>
+</MudDataGrid>
 
 @code {
-    private readonly List<Apdu> messages = new();
+    private ObservableCollection<Apdu> messages = [];
 
-    private bool _isReadable;
-    private bool isReadable
+    private bool IsReadable
     {
-        get => _isReadable;
+        get;
         set
         {
-            _isReadable = value;
+            field = value;
             StateHasChanged();
         }
     }
 
     protected override void OnInitialized()
     {
-        messages.AddRange(Store.GetMessages());
+        messages = new ObservableCollection<Apdu>(Store.GetMessages());
 
         Store.MessageAdded += OnAppended;
         Store.Cleared += OnCleared;
@@ -82,36 +79,49 @@
     private void OnAppended(Apdu item)
     {
         messages.Add(item);
-        InvokeAsync(StateHasChanged);
     }
 
     private void OnCleared()
     {
         messages.Clear();
-        InvokeAsync(StateHasChanged);
-    }
-
-    private void Clear()
-    {
-        Store.Clear();
-    }
-
-    private Task Reconnect()
-    {
-        return Reader.RestartSmartCardReaders();
     }
 
     private async Task CopyRow(Apdu? apdu)
     {
         if (apdu is null)
             return;
-        await JS.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, apdu.ToHex());
+        await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, apdu.ToHex());
     }
 
     private async Task CopyRows()
     {
         var data = string.Join(Environment.NewLine, messages.Select(x => x.ToHex()));
-        await JS.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
+        await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
+    }
+
+    private static string GetStatusIcon(Apdu item) => item switch
+    {
+        CommandApdu _ => Icons.Material.Filled.KeyboardArrowLeft,
+        ResponseApdu _ => Icons.Material.Filled.KeyboardDoubleArrowRight,
+        _ => string.Empty
+    };
+
+    private static Color GetStatusColor(Apdu item) => item switch
+    {
+        CommandApdu _ => Color.Default,
+        ResponseApdu response => (response.SW1, response.SW2) switch
+        {
+            (0x90, 0x00) => Color.Success,
+            _ => Color.Error
+        },
+        _ => Color.Default
+    };
+
+    private static string GetRowStyle(Apdu item, int i)
+    {
+        if (i % 4 < 2)
+            return "background: rgba(0,0,0,0.3);";
+        return string.Empty;
     }
 
     public void Dispose()

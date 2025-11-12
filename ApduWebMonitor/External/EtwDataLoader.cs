@@ -9,26 +9,28 @@ public class EtwDataLoader(
 {
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
-        {
-            var source = new ETWTraceEventSource("APDUTraceLive", TraceEventSourceType.Session);
-            source.AllEvents += HandleEvent;
+        var source = new ETWTraceEventSource("APDUTraceLive", TraceEventSourceType.Session);
+        source.AllEvents += HandleEvent;
 
-            stoppingToken.Register(() =>
+        stoppingToken.Register(() =>
+        {
+            logger.LogInformation("Stopping ETW event processing...");
+            source.StopProcessing();
+            source.Dispose();
+        });
+
+        logger.LogInformation("Starting ETW event processing...");
+        return Task.Run(() =>
+        {
+            try
             {
-                logger.LogInformation("Stopping ETW event processing...");
-                source.StopProcessing();
-                source.Dispose();
-            });
-
-            return Task.Run(source.Process, stoppingToken);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error");
-        }
-
-        return Task.CompletedTask;
+                source.Process();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ETW Process ERROR");
+            }
+        }, stoppingToken);
     }
 
     private void HandleEvent(TraceEvent evnt)
