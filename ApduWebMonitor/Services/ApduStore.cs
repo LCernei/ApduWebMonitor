@@ -5,27 +5,27 @@ namespace ApduWebMonitor.Services;
 
 public class ApduStore(ILogger<ApduStore> logger)
 {
-    private readonly ObservableCollection<Apdu> messages = [];
+    private readonly ObservableCollection<RawApdu> messages = [];
     private IsoCase lastIsoCase;
     private bool nextIsCommand = true;
 
-    public ReadOnlyObservableCollection<Apdu> GetObservable() => new(messages);
+    public ReadOnlyObservableCollection<RawApdu> GetObservable() => new(messages);
 
     public void AddMessage(byte[] apduBytes)
     {
         try
         {
-            Apdu apdu;
+            RawApdu apdu;
             if (nextIsCommand)
             {
                 nextIsCommand = false;
-                apdu = ApduFactory.CommandFrom(apduBytes);
-                lastIsoCase = apdu.Case;
+                apdu = RawApdu.CreateCommand(apduBytes);
+                lastIsoCase = apdu.Apdu.Case;
             }
             else
             {
                 nextIsCommand = true;
-                apdu = ApduFactory.ResponseFrom(lastIsoCase, apduBytes);
+                apdu = RawApdu.CreateResponse(lastIsoCase, apduBytes);
             }
 
             messages.Add(apdu);

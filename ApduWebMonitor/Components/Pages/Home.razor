@@ -10,7 +10,7 @@
 
 <PageTitle>APDU Monitor</PageTitle>
 
-<MudDataGrid T="Apdu" Items="@messages"
+<MudDataGrid T="RawApdu" Items="@messages"
              Height="75vh"
              Dense="true"
              Hover="true"
@@ -38,7 +38,7 @@
     </ToolBarContent>
 
     <Columns>
-        @* <SelectColumn T="Apdu" Size="Size.Small" /> *@
+        @* <SelectColumn T="RawApdu" Size="Size.Small" /> *@
         <TemplateColumn CellStyle="width:1%;">
             <CellTemplate>
                 <MudIcon Icon="@GetStatusIcon(context.Item)" Color="@GetStatusColor(context.Item)" Size="Size.Small" />
@@ -59,7 +59,7 @@
 </MudDataGrid>
 
 @code {
-    private ReadOnlyObservableCollection<Apdu> messages = new([]);
+    private ReadOnlyObservableCollection<RawApdu> messages = new([]);
 
     private bool IsReadable
     {
@@ -76,7 +76,7 @@
         messages = Store.GetObservable();
     }
 
-    private async Task CopyRow(Apdu? apdu)
+    private async Task CopyRow(RawApdu? apdu)
     {
         if (apdu is null)
             return;
@@ -94,14 +94,14 @@
         await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
     }
 
-    private static string GetStatusIcon(Apdu item) => item switch
+    private static string GetStatusIcon(RawApdu item) => item.Apdu switch
     {
         CommandApdu _ => Icons.Material.Filled.KeyboardArrowLeft,
         ResponseApdu _ => Icons.Material.Filled.KeyboardDoubleArrowRight,
         _ => string.Empty
     };
 
-    private static Color GetStatusColor(Apdu item) => item switch
+    private static Color GetStatusColor(RawApdu item) => item.Apdu switch
     {
         CommandApdu _ => Color.Default,
         ResponseApdu response => (response.SW1, response.SW2) switch
@@ -112,7 +112,7 @@
         _ => Color.Default
     };
 
-    private static string GetRowStyle(Apdu item, int i)
+    private static string GetRowStyle(RawApdu item, int i)
     {
         if (i % 4 < 2)
             return "background: rgba(0,0,0,0.3);";
