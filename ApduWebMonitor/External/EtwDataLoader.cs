@@ -51,7 +51,7 @@ public class EtwDataLoader(
     {
         if (evnt.Opcode != TraceEventOpcode.Info)
         {
-            logger.LogInformation($"Not Opcode Info");
+            logger.LogInformation("Not Opcode Info");
             return;
         }
 
@@ -70,7 +70,7 @@ public class EtwDataLoader(
         if (splitData[1] == "Reset")
         {
             logger.LogInformation("Reset");
-            store.Reset();
+            store.Clear();
             return;
         }
 

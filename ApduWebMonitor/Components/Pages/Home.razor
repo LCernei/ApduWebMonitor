@@ -1,24 +1,23 @@
 @page "/"
 @using ApduWebMonitor.External
 @using ApduWebMonitor.Services
-@using PCSC.Iso7816
 @using System.Collections.ObjectModel
 @rendermode InteractiveServer
 @inject ApduStore Store
 @inject IJSRuntime JsRuntime
+@inject ISnackbar Snackbar
 @inject UsbReader Reader
 
 <PageTitle>APDU Monitor</PageTitle>
 
-<MudDataGrid T="RawApdu" Items="@messages"
+<MudDataGrid T="ApduTransaction" Items="@messages"
              Height="75vh"
              Dense="true"
              Hover="true"
-             Striped="false"
+             Striped="true"
              Bordered="true"
              FixedHeader="true"
-             MultiSelection="true"
-             RowStyleFunc="GetRowStyle">
+             MultiSelection="true">
     <ToolBarContent>
         <MudText>Total: @messages.Count</MudText>
         <MudSpacer />
@@ -27,6 +26,11 @@
             <MudToggleItem Value="true">UTF-8</MudToggleItem>
         </MudToggleGroup>
         <MudSpacer />
+        <MudTextField @bind-Value="ExportFileName" Label="Export file name" Variant="Variant.Text" />
+        <MudButton OnClick="Export"
+                   StartIcon="@Icons.Material.Outlined.Download"
+                   Color="Color.Success">Export
+        </MudButton>
         <MudButton OnClick="@Store.Clear"
                    StartIcon="@Icons.Material.Outlined.Delete"
                    Color="Color.Primary">Clear
@@ -38,14 +42,18 @@
     </ToolBarContent>
 
     <Columns>
-        @* <SelectColumn T="RawApdu" Size="Size.Small" /> *@
+        @* <SelectColumn T="ApduTransaction" Size="Size.Small" /> *@
         <TemplateColumn CellStyle="width:1%;">
             <CellTemplate>
                 <MudIcon Icon="@GetStatusIcon(context.Item)" Color="@GetStatusColor(context.Item)" Size="Size.Small" />
             </CellTemplate>
         </TemplateColumn>
-        <PropertyColumn Property="@(x => IsReadable ? x.ToReadable() : x.ToHex())" Title="Data" Sortable="false"
-                        CellStyle="white-space: nowrap;" />
+        <TemplateColumn Title="Data" Sortable="false" CellStyle="white-space: nowrap;">
+            <CellTemplate>
+                <MudText>@(context.Item.ToCommandString(IsReadable))</MudText>
+                <MudText>@(context.Item.ToResponseString(IsReadable))</MudText>
+            </CellTemplate>
+        </TemplateColumn>
         <TemplateColumn StickyRight="true" HeaderStyle="width:1%;" CellStyle="width:1%;">
             <HeaderTemplate>
                 <MudIconButton OnClick="@CopyRows" Icon="@Icons.Material.Outlined.CopyAll" Size="Size.Small" />
@@ -59,7 +67,7 @@
 </MudDataGrid>
 
 @code {
-    private ReadOnlyObservableCollection<RawApdu> messages = new([]);
+    private ReadOnlyObservableCollection<ApduTransaction> messages = new([]);
 
     private bool IsReadable
     {
@@ -71,17 +79,19 @@
         }
     }
 
+    public string? ExportFileName { get; set; }
+
     protected override void OnInitialized()
     {
         messages = Store.GetObservable();
     }
 
-    private async Task CopyRow(RawApdu? apdu)
+    private async Task CopyRow(ApduTransaction? transaction)
     {
-        if (apdu is null)
+        if (transaction is null)
             return;
 
-        var data = IsReadable ? apdu.ToReadable() : apdu.ToHex();
+        var data = transaction.ToString(IsReadable);
         await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
     }
 
@@ -89,33 +99,56 @@
     {
         var data = string.Join(
             Environment.NewLine,
-            messages.Select(x => IsReadable ? x.ToReadable() : x.ToHex()));
+            messages.Select(x => x.ToString(IsReadable)));
 
         await JsRuntime.InvokeVoidAsync(Constants.Navigator.Clipboard.WriteText, data);
     }
 
-    private static string GetStatusIcon(RawApdu item) => item.Apdu switch
+    private static string GetStatusIcon(ApduTransaction _) => Icons.Material.Filled.Circle;
+
+    private static Color GetStatusColor(ApduTransaction item) => (item.ResponseApdu?.SW1, item.ResponseApdu?.SW2) switch
     {
-        CommandApdu _ => Icons.Material.Filled.KeyboardArrowLeft,
-        ResponseApdu _ => Icons.Material.Filled.KeyboardDoubleArrowRight,
-        _ => string.Empty
+        (0x90, 0x00) => Color.Success,
+        _ => Color.Error
     };
 
-    private static Color GetStatusColor(RawApdu item) => item.Apdu switch
+    private async Task Export()
     {
-        CommandApdu _ => Color.Default,
-        ResponseApdu response => (response.SW1, response.SW2) switch
-        {
-            (0x90, 0x00) => Color.Success,
-            _ => Color.Error
-        },
-        _ => Color.Default
-    };
+        await SaveFile(string.Join(
+            Environment.NewLine,
+            messages.Select(x => x.ToString(false))), ExportFileName + ".apdu");
 
-    private static string GetRowStyle(RawApdu item, int i)
+        await SaveFile(string.Join(
+            Environment.NewLine,
+            messages.Select(x => x.ToString(true))), ExportFileName + ".readable");
+
+        Snackbar.Add("Export successful", Severity.Success,
+            config =>
+            {
+                config.VisibleStateDuration = 1000;
+                config.BackgroundBlurred = true;
+            });
+    }
+
+    private const string FileDownloaderScript =
+        """
+        (function() {{
+            var filename = '{0}';
+            var bytesBase64 = '{1}';
+            var link = document.createElement('a');
+            link.download = filename;
+            link.href = 'data:application/octet-stream;base64,' + bytesBase64;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }})();
+        """;
+
+    private async Task SaveFile(string data, string fileName)
     {
-        if (i % 4 < 2)
-            return "background: rgba(0,0,0,0.3);";
-        return string.Empty;
+        var base64Data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(data));
+
+        // TODO: Find a more secure alternative
+        await JsRuntime.InvokeVoidAsync("eval", string.Format(FileDownloaderScript, fileName, base64Data));
     }
 }

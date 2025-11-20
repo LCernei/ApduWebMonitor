@@ -5,45 +5,37 @@ namespace ApduWebMonitor.Services;
 
 public class ApduStore(ILogger<ApduStore> logger)
 {
-    private readonly ObservableCollection<RawApdu> messages = [];
-    private IsoCase lastIsoCase;
-    private bool nextIsCommand = true;
+    private readonly ObservableCollection<ApduTransaction> messages = [];
+    private ApduTransaction? currentTransaction;
 
-    public ReadOnlyObservableCollection<RawApdu> GetObservable() => new(messages);
+    public ReadOnlyObservableCollection<ApduTransaction> GetObservable() => new(messages);
 
     public void AddMessage(byte[] apduBytes)
     {
         try
         {
-            RawApdu apdu;
-            if (nextIsCommand)
+            if (currentTransaction is null)
             {
-                nextIsCommand = false;
-                apdu = RawApdu.CreateCommand(apduBytes);
-                lastIsoCase = apdu.Apdu.Case;
+                currentTransaction = new ApduTransaction();
+                currentTransaction.SetCommand(apduBytes);
             }
             else
             {
-                nextIsCommand = true;
-                apdu = RawApdu.CreateResponse(lastIsoCase, apduBytes);
+                currentTransaction.SetResponse(apduBytes);
+                messages.Add(currentTransaction);
+                currentTransaction = null;
             }
-
-            messages.Add(apdu);
         }
         catch (Exception ex)
         {
+            currentTransaction = null;
             logger.LogError(ex, "ERROR");
         }
     }
 
-    public void Reset()
-    {
-        nextIsCommand = true;
-        Clear();
-    }
-
     public void Clear()
     {
+        currentTransaction = null;
         messages.Clear();
     }
 }
